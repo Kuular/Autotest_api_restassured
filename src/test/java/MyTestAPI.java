@@ -1,98 +1,91 @@
-import io.restassured.path.json.JsonPath;
-import io.restassured.response.Response;
+import SerializationPage.ListResource;
+import SerializationPage.Register;
+import SerializationPage.UsersData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.notNullValue;
+
 
 public class MyTestAPI {
+    // Задание: Используя сервис https://reqres.in/ получить список пользователей со второй страницы.
+    // Убедится что имена файлов-аватаров пользователей совпадают
     @Test
-    public void testListPageSecond() {
-        Specifications.installSpec(Specifications.requestSpec(),Specifications.responseSpec());
-        given()
+    public void testNameAvatar() {
+        Specifications.installSpec(Specifications.requestSpec(), Specifications.responseSpec());
+        List<UsersData> data = given()
                 .when()
                 .get("api/users?page=2")
                 .then()
-                .log().all()
-                .body("data", notNullValue());
+                .statusCode(200)
+                .log().body()
+                .extract().body().jsonPath().getList("data", UsersData.class);
 
-    }
-
-    //    взял имена файлов аватаров с первой страницы
-    @Test
-    public void testListAvatar() {
-        Specifications.installSpec(Specifications.requestSpec(),Specifications.responseSpec());
-        Map<String, String> avatar = new HashMap<String, String>();
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/calebogden/128.jpg");
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/josephstein/128.jpg");
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/olegpogodaev/128.jpg");
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/marcoramires/128.jpg");
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/stephenmoon/128.jpg");
-        avatar.put("avatar", "https://s3.amazonaws.com/uifaces/faces/twitter/bigmancho/128.jpg");
-        Response response = given()
-                .body(avatar)
-                .contentType("application/json")
-                .when()
-                .post("/api/users")
-                .then()
-                .log().all()
-                .extract().response();
-        JsonPath jsonResponse = response.jsonPath();
-        Assert.assertEquals(jsonResponse.get("avatar"), avatar.get("avatar"), "Имя не совпадает");
+        Assert.assertTrue(data.stream().allMatch(x -> x.getAvatar().endsWith("128.jpg")));
     }
 
 
+    // Протестировать регистрацию пользователя в системе.
+    // Необходимо создание двух тестов: на успешную регистрацию
     @Test
     public void testRegister() {
-        Specifications.installSpec(Specifications.requestSpec(),Specifications.responseSpec());
-        Map<String, String> register = new HashMap<String, String>();
-        register.put("email", "eve.holt@reqres.in");
-        register.put("password", "pistol");
-
-        Response response = given()
-                .body(register)
+        Specifications.installSpec(Specifications.requestSpec(), Specifications.responseSpec());
+        Register register = new Register("eve.holt@reqres.in", "pistol");
+        given()
                 .contentType("application/json")
+                .body(register)
                 .when()
                 .post("/api/register")
                 .then()
-                .log().all()
-                .extract().response();
-        JsonPath jsonResponse = response.jsonPath();
-        Assert.assertEquals(jsonResponse.get("email"), "4", "Почта не совпадает");
-        Assert.assertEquals(jsonResponse.get("password"), "QpwL5tke4Pnpja7X4", "Пароль не совпадает");
+                .log().body()
+                .statusCode(200)
+                .body("token",notNullValue())
+                .body("id", notNullValue());
     }
 
-
+    // и регистрацию с ошибкой из-за отсутствия пароля
     @Test
     public void testUnregister() {
-        Specifications.installSpec(Specifications.requestSpec(),Specifications.responseSpec());
-        Map<String, String> register = new HashMap<String, String>();
-        register.put("email", "sydney@fife");
-        Response response = given()
-                .body(register)
+        Specifications.installSpec(Specifications.requestSpec(), Specifications.responseSpec());
+        given()
+                .body(new Register("sydney@fife", ""))
                 .contentType("application/json")
                 .when()
                 .post("/api/register")
                 .then()
-                .log().all()
-                .extract().response();
-        JsonPath jsonResponse = response.jsonPath();
-        Assert.assertEquals(jsonResponse.get("email"), register.get("email"), "Нет почты или пароля");
-        Assert.assertEquals(jsonResponse.get("password"), register.get("password"), "Нет почты или пароля");
+                .log().ifError()
+                .body("password", notNullValue());
     }
 
+    //Убедится что операция LIST <RESOURCE> возвращает данные отсортированные по годам
     @Test
-    public void testList(){
-        Specifications.installSpec(Specifications.requestSpec(),Specifications.responseSpec());
-        given()
+    public void testList() {
+        Specifications.installSpec(Specifications.requestSpec(), Specifications.responseSpec());
+        List<ListResource> data = given()
                 .when()
-                .get("api/unknown")
+                .get("/api/unknown")
                 .then()
-                .log().all()
-                .body("data.year", hasItems(2000, 2001, 2002, 2003, 2004, 2005));
+                .statusCode(200)
+                .extract().body().jsonPath().getList("data", ListResource.class);
+
+        List<Integer> years = new ArrayList<>();
+        for (ListResource listResource : data) {
+            years.add(listResource.getYear());
+        }
+
+        List<Integer> checkYears = new ArrayList<>();
+        for (Integer integer : years) {
+            if (integer < (integer + 1)) {
+                checkYears.add(integer);
+            }
+        }
+        Assert.assertEquals(years, checkYears);
     }
 }
+
+
+
